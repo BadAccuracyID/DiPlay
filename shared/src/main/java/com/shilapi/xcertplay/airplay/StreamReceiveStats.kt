@@ -63,11 +63,10 @@ internal class StreamReceiveStats(
         val now = nowNs()
         if (!ended && now - windowStart < 5_000_000_000L) return
         runCatching { report("Receive: $label packets=$packets bytes=$bytes readMaxMs=${maxReadNs / 1_000_000} " +
-            "interArrivalMaxMs=${maxInterArrivalNs / 1_000_000} " +
             "processMaxUs=${maxProcessNs / 1000} seqForwardGaps=$forwardGapPackets " +
+            "lateOrDuplicate=$lateOrDuplicate interArrivalMaxMs=${maxInterArrivalNs / 1_000_000} " +
             "seqGapEvents=$sequenceGapEvents seqGapMax=$maxSequenceGap " +
-            "seqGapLast=[$lastSequenceGap] seqGapAtMs=$lastSequenceGapAtMs " +
-            "lateOrDuplicate=$lateOrDuplicate ended=$ended") }
+            "seqGapLast=[$lastSequenceGap] seqGapAtMs=$lastSequenceGapAtMs ended=$ended") }
         windowStart = now
         packets = 0
         bytes = 0
