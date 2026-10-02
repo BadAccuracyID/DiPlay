@@ -149,6 +149,11 @@ class CarPlayHostActivity : ComponentActivity() {
         hostName = "diplay-" + DiPlayBootstrap.deviceId(airPlayIdentity).replace(":", "").lowercase(),
         hostMac = DiPlayBootstrap.deviceId(airPlayIdentity).split(":").map { it.toInt(16).toByte() }.toByteArray(),
         wirelessBluetoothDeviceAddress = DiPlayPreferences.phoneAddress(this),
+        wirelessBluetoothBackend = if (gt6OemBluetoothEnabled) {
+            com.shilapi.xcertplay.orchestration.WirelessBluetoothBackend.GT6_OEM_EXPERIMENTAL
+        } else {
+            com.shilapi.xcertplay.orchestration.WirelessBluetoothBackend.ANDROID_RFCOMM
+        },
         transport = if (wirelessEnabled) CarPlayTransport.WIRELESS else CarPlayTransport.WIRED,
         wirelessHotspotMode = wirelessHotspotMode,
         manualHotspotSsid = manualHotspotSsid,
@@ -313,6 +318,7 @@ class CarPlayHostActivity : ComponentActivity() {
     private var remoteMfiToken = ""
     private var wirelessPermissionsReady = false
     private var wirelessHotspotMode = WirelessHotspotMode.WIFI_P2P
+    private var gt6OemBluetoothEnabled = false
     private var manualHotspotSsid = ""
     private var manualHotspotPassphrase = ""
     private var manualHotspotBand = ManualHotspotBand.AUTO
@@ -476,6 +482,7 @@ class CarPlayHostActivity : ComponentActivity() {
         remoteMfiServer = AirPlayPersistence.loadRemoteMfiServer(this)
         remoteMfiToken = AirPlayPersistence.loadRemoteMfiToken(this)
         wirelessHotspotMode = AirPlayPersistence.loadWirelessHotspotMode(this)
+        gt6OemBluetoothEnabled = AirPlayPersistence.loadGt6OemBluetoothEnabled(this)
         manualHotspotSsid = AirPlayPersistence.loadManualHotspotSsid(this)
         manualHotspotPassphrase = AirPlayPersistence.loadManualHotspotPassphrase(this)
         manualHotspotBand = AirPlayPersistence.loadManualHotspotBand(this)
@@ -1459,6 +1466,7 @@ class CarPlayHostActivity : ComponentActivity() {
         AirPlayPersistence.saveRemoteMfiServer(this, remoteMfiServer)
         AirPlayPersistence.saveRemoteMfiToken(this, remoteMfiToken)
         AirPlayPersistence.saveWirelessHotspotMode(this, wirelessHotspotMode)
+        AirPlayPersistence.saveGt6OemBluetoothEnabled(this, gt6OemBluetoothEnabled)
         AirPlayPersistence.saveManualHotspotSsid(this, manualHotspotSsid)
         AirPlayPersistence.saveManualHotspotPassphrase(this, manualHotspotPassphrase)
         AirPlayPersistence.saveManualHotspotBand(this, manualHotspotBand)
@@ -2282,6 +2290,16 @@ class CarPlayHostActivity : ComponentActivity() {
     private fun buildHotspotModeSection(): View {
         val section = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+        }
+        if (Build.MODEL.trim().equals("GT6-CAR", ignoreCase = true)) {
+            section.addView(Switch(this).apply {
+                text = getString(R.string.gt6_oem_bluetooth_experimental)
+                textSize = 18f
+                setTextColor(MENU_SECONDARY)
+                isChecked = gt6OemBluetoothEnabled
+                setOnCheckedChangeListener { _, checked -> gt6OemBluetoothEnabled = checked }
+            })
+            section.addView(menuText(getString(R.string.gt6_oem_bluetooth_unverified), 14f, MENU_SECONDARY))
         }
         section.addView(
             menuText(getString(R.string.wi_fi_session), 20f, MENU_SECONDARY),

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="gt6_oem_bluetooth_experimental">Use GT6 Bluetooth (experimental)</string>
+    <string name="gt6_oem_bluetooth_unverified">Requires root and supported GT6 firmware. Bluetooth tested; full wireless CarPlay is still being tested.</string>
+</resources>

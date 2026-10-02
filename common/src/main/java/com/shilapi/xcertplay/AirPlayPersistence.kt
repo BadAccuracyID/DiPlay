@@ -246,6 +246,16 @@ object AirPlayPersistence {
         return supported
     }
 
+    fun loadGt6OemBluetoothEnabled(context: Context): Boolean =
+        Build.MODEL.trim().equals("GT6-CAR", ignoreCase = true) &&
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getBoolean("gt6_oem_bluetooth_experimental", false)
+
+    fun saveGt6OemBluetoothEnabled(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean("gt6_oem_bluetooth_experimental", enabled).apply()
+    }
+
     fun saveWirelessHotspotMode(context: Context, mode: WirelessHotspotMode) {
         val supported = if (mode == WirelessHotspotMode.LOCAL_ONLY_HOTSPOT) WirelessHotspotMode.MANUAL else mode
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()

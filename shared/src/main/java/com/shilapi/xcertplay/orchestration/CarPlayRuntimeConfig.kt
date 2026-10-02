@@ -23,6 +23,11 @@ enum class WirelessHotspotMode {
     MANUAL,
 }
 
+enum class WirelessBluetoothBackend {
+    ANDROID_RFCOMM,
+    GT6_OEM_EXPERIMENTAL,
+}
+
 enum class ManualHotspotBand {
     AUTO,
     GHZ_2_4,
@@ -62,6 +67,7 @@ class CarPlayRuntimeConfig(
     val manualHotspotChannel: Int = 0,
     val manualHotspotSecurity: ManualHotspotSecurity = ManualHotspotSecurity.WPA2,
     val wirelessBluetoothDeviceAddress: String? = null,
+    val wirelessBluetoothBackend: WirelessBluetoothBackend = WirelessBluetoothBackend.ANDROID_RFCOMM,
     val locationReportingEnabled: Boolean = false,
 ) {
     init {

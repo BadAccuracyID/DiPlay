@@ -45,6 +45,7 @@ import com.shilapi.xcertplay.network.WirelessHotspotBackend
 import com.shilapi.xcertplay.network.WirelessHotspotManager
 import com.shilapi.xcertplay.transport.BlockingDuplexByteStream
 import com.shilapi.xcertplay.transport.BluetoothRfcommDuplexStream
+import com.shilapi.xcertplay.transport.gt6.Gt6OemBluetoothStream
 import com.shilapi.xcertplay.transport.Ch341DeviceMatcher
 import com.shilapi.xcertplay.transport.Ch341I2cTransport
 import com.shilapi.xcertplay.transport.Ch341UsbHost
@@ -212,7 +213,7 @@ class CarPlayController(
     @Volatile private var hotspot: WirelessHotspotManager? = null
     @Volatile private var bonjour: CarPlayBonjour? = null
     @Volatile private var bluetoothSocket: BluetoothSocket? = null
-    @Volatile private var bluetoothStream: BluetoothRfcommDuplexStream? = null
+    @Volatile private var bluetoothStream: BlockingDuplexByteStream? = null
     @Volatile private var wirelessTunnelChannel: Iap2Session? = null
     @Volatile private var wirelessIdentification: Iap2IdentificationConfig? = null
     @Volatile private var wirelessAirPlayEndpoint: Iap2WirelessCarPlayEndpoint? = null
@@ -876,6 +877,38 @@ class CarPlayController(
 
             val mfi = mfiSession?.client
                 ?: throw IOException("MFi coprocessor client is unavailable")
+            // OEM preflight happens before any AP/P2P work, so an unsupported/occupied transport
+            // cannot trigger a Wi-Fi mode change just to discover the same Bluetooth failure.
+            val gt6 = if (config.wirelessBluetoothBackend == WirelessBluetoothBackend.GT6_OEM_EXPERIMENTAL) {
+                if (!android.os.Build.MODEL.trim().equals("GT6-CAR", ignoreCase = true)) {
+                    throw IOException("GT6 OEM Bluetooth transport is only available on GT6-CAR")
+                }
+                val adapter = bluetoothAdapter ?: throw IOException("Bluetooth adapter is unavailable")
+                if (!adapter.isEnabled) throw IOException("Bluetooth is not enabled")
+                val device = selectWirelessBluetoothDevice(adapter)
+                onStatus(CarPlayStatus.ConnectingBluetooth)
+                val stream = Gt6OemBluetoothStream(device.address, ::debugLog)
+                    .also { bluetoothStream = it }
+                val address = stream.connect(RFCOMM_CONNECT_TIMEOUT_MILLIS)
+                if (isStaleWirelessRun(generation)) {
+                    closeWirelessStack()
+                    return
+                }
+                val session = Iap2Session.openWireless(
+                    stream,
+                    traceContext = "wireless-gt6-oem",
+                    onTrace = ::debugLog,
+                ).also { csm = it }
+                if (!session.awaitReady(RFCOMM_CONNECT_TIMEOUT_MILLIS)) {
+                    throw IOException("GT6 OEM transport did not complete the iAP2 link handshake; Wi-Fi setup skipped")
+                }
+                debugLog("GT6 OEM iAP2 link handshake verified before Wi-Fi setup")
+                if (isStaleWirelessRun(generation)) {
+                    closeWirelessStack()
+                    return
+                }
+                device to address
+            } else null
             val hotspotInfo = startWirelessHotspot(generation)
             if (isStaleWirelessRun(generation)) {
                 closeWirelessStack()
@@ -925,8 +958,8 @@ class CarPlayController(
             val adapter = bluetoothAdapter
                 ?: throw IOException("Bluetooth adapter is unavailable")
             if (!adapter.isEnabled) throw IOException("Bluetooth is not enabled")
-            val device = selectWirelessBluetoothDevice(adapter)
-            val hostBluetoothMac = accessoryBluetoothMac(adapter)
+            val device = gt6?.first ?: selectWirelessBluetoothDevice(adapter)
+            val hostBluetoothMac = gt6?.second ?: accessoryBluetoothMac(adapter)
             debugLog(
                 "wireless selected Bluetooth target name=${device.name ?: "unknown"} " +
                     "address=${device.address} localBt=$hostBluetoothMac",
@@ -984,27 +1017,31 @@ class CarPlayController(
                 return
             }
 
-            onStatus(CarPlayStatus.ConnectingBluetooth)
-            debugLog(
-                "wireless RFCOMM connecting address=${device.address} " +
-                    "uuid=$IAP2_IPHONE_UUID",
-            )
-            val socket = device
+            val channel = if (gt6 != null) {
+                csm ?: throw IOException("GT6 OEM iAP2 session closed during bootstrap")
+            } else {
+                onStatus(CarPlayStatus.ConnectingBluetooth)
+                debugLog(
+                    "wireless RFCOMM connecting address=${device.address} " +
+                        "uuid=$IAP2_IPHONE_UUID",
+                )
+                val socket = device
                     .createRfcommSocketToServiceRecord(UUID.fromString(IAP2_IPHONE_UUID))
                     .also { bluetoothSocket = it }
-            connectBluetoothSocket(socket, device.address)
-            debugLog("wireless RFCOMM connected address=${device.address}")
+                connectBluetoothSocket(socket, device.address)
+                val stream = BluetoothRfcommDuplexStream(socket).also { bluetoothStream = it }
+                debugLog("wireless RFCOMM connected address=${device.address}")
+                Iap2Session.openWireless(
+                    stream,
+                    traceContext = "wireless-rfcomm",
+                    onTrace = ::debugLog,
+                ).also { csm = it }
+            }
             if (isStaleWirelessRun(generation)) {
                 closeWirelessStack()
                 return
             }
-            val stream = BluetoothRfcommDuplexStream(socket).also { bluetoothStream = it }
-            val channel = Iap2Session.openWireless(
-                stream,
-                traceContext = "wireless-rfcomm",
-                onTrace = ::debugLog,
-            ).also { csm = it }
-            debugLog("wireless iAP2 CSM channel opened over RFCOMM")
+            debugLog("wireless iAP2 CSM channel available backend=${config.wirelessBluetoothBackend}")
             if (isStaleWirelessRun(generation)) {
                 closeWirelessStack()
                 return
