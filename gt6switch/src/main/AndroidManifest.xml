@@ -1,0 +1,17 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <queries>
+        <package android:name="com.zjinnova.zlink" />
+        <package android:name="com.shihab.diplay.hudtest" />
+        <package android:name="com.shihab.diplay" />
+    </queries>
+    <application android:label="CarPlay Switch" android:allowBackup="false"
+        android:icon="@drawable/ic_switch" android:theme="@android:style/Theme.Material.NoActionBar">
+        <activity android:name=".MainActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

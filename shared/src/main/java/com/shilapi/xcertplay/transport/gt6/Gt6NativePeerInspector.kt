@@ -18,6 +18,18 @@ internal class Gt6NativePeerInspector : Gt6PeerInspector {
     private var base = 0L
 
     override fun prepare(target: String) {
+        discover()
+        if (lastPhone() != target) {
+            throw IOException("GT6 will reconnect its last phone; connect the selected phone in the car Bluetooth app first")
+        }
+        val state = snapshot()
+        if (state.profileMask != 0 || state.peer != null) {
+            throw IOException("GT6 projection Bluetooth is already in use; close other projection apps")
+        }
+    }
+
+    fun discover() {
+        pid = 0
         val digest = command("sha256sum /system/bin/blink").toString(Charsets.US_ASCII).substringBefore(' ')
         if (digest != FIRMWARE_SHA256) throw IOException("GT6 native peer inspection does not support this firmware")
         val candidates = command("pidof blink").toString(Charsets.US_ASCII).trim().split(Regex("\\s+"))
@@ -34,15 +46,13 @@ internal class Gt6NativePeerInspector : Gt6PeerInspector {
             pid = 0
         }
         if (pid == 0) throw IOException("GT6 projection process could not be identified")
+    }
+
+    fun lastPhone(): String {
         val last = command("toybox grep '^lastaddr=' /data/blink/bt_conf.ini").toString(Charsets.US_ASCII)
             .trim().substringAfter('=', "")
-        if (Gt6OemProtocol.normalizeAddress(last) != target) {
-            throw IOException("GT6 will reconnect its last phone; connect the selected phone in the car Bluetooth app first")
-        }
-        val state = snapshot()
-        if (state.profileMask != 0 || state.peer != null) {
-            throw IOException("GT6 projection Bluetooth is already in use; close other projection apps")
-        }
+        return Gt6OemProtocol.normalizeAddress(last)
+            ?: throw IOException("Pair and connect your iPhone in the car Bluetooth app first")
     }
 
     @Synchronized override fun snapshot(): Gt6NativePeerState {
