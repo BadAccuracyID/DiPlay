@@ -122,3 +122,9 @@ Audio output, microphone, and scrolling-knob forwarding remain separate deferred
 ## GT6 knob candidate, 2026-10-03
 
 A GT6 navigation-key handler and controller input dispatch are implemented. The standalone APK builds and 15 focused tests pass. Installation and physical knob behavior remain unverified because the user resumed from home without ADB. See [GT6_KNOB.md](GT6_KNOB.md) for the identified firmware input path and the headunit test.
+
+## Complete user test, 2026-10-03
+
+After installing source commit `e05aa2a`, the user confirmed wireless CarPlay, knob rotation, selection, CarPlay Back and removal of the white Android focus overlay. The user then tested speaker audio and microphone input and reported that everything works. This supersedes the earlier deferred audio, microphone and knob status for the installed GT6 standalone build. No separate audio or microphone patch was needed in this session.
+
+The installed APK hash was verified against the private build receipt. The app has microphone permission, starts its controller with microphone enabled, and receives media audio into a playing Android AudioTrack with an advancing playback head and no write errors. The user's test establishes audible output and usable microphone input for this session; boot startup, reconnects, long-term stability and ZLink's wireless handoff remain separate tests. See `GT6_SWITCH.md` for the proposed default receiver setup.

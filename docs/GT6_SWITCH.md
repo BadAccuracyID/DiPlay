@@ -43,7 +43,7 @@ On 3 October 2026, the installed switcher's **Use DiPlay** button stopped ZLink'
 
 The return to ZLink did not restore the phone’s wireless CarPlay connection. The user can open ZLink manually, but it does not make the phone join its Wi-Fi. Wi-Fi ADB dropped during the handoff and briefly became reachable after the return timer; the final switch reports were not retrieved before the session ended. Complete round-trip reconnection and boot behavior remain unverified. Successful app launch alone is insufficient to claim CarPlay reconnection.
 
-## Next session priorities
+## Earlier paused-session priorities
 
 - P1: physical scrolling knob input inside DiPlay CarPlay.
 - P2: ZLink switcher restoration of the phone’s Wi-Fi handoff.
@@ -51,3 +51,24 @@ The return to ZLink did not restore the phone’s wireless CarPlay connection. T
 - P2: speaker audio output.
 
 Device testing was stopped at the user’s request around 02:00 on 3 October 2026. No knob, microphone, or speaker fix was installed during this session.
+
+## Current device test, 2026-10-03
+
+The user resumed testing and confirmed wireless CarPlay, knob rotation/select/Back, speaker audio and microphone input with the patched DiPlay package `com.shihab.diplay.hudtest`. The switcher remains installed. ZLink's native service is stopped, and the saved selection is DiPlay. The original DiPlay package `com.shihab.diplay` and OEM ZLink remain installed.
+
+Readback confirms the existing Magisk selection script only stops ZLink after a 30-second boot delay. It does not launch DiPlay. The patched app's BootReceiver is disabled by a device component override, despite being enabled in the mobile manifest. Automatic startup, reconnects after sleep and a full reboot have not been tested.
+
+## Making DiPlay the default receiver
+
+The tested patched package can remain installed as the primary receiver. Replacing the original package is optional: it needs compatible signing or a controlled data/settings migration, and the current switcher already prefers the patched package. The private standalone build must retain its authentication provisioning.
+
+The next implementation should use the switcher's saved selection as the authority for both startup and the car shortcut:
+
+1. Extend startup to wait for Android boot and Bluetooth readiness, stop ZLink only when DiPlay is selected, release only a confirmed previous connection owned by the selected phone, and launch the tested GT6 wireless path with that phone. Reuse the existing selection handling and serialize it with manual switching. A fixed boot delay alone is not a readiness check.
+2. Route the CarPlay/Navi shortcut to the selected receiver. The current Vector button configuration has a ZLink mapping; an app shortcut should open the selected receiver without tearing down an already active CarPlay session. Keep camera and power mode handling.
+3. Preserve CarPlay Switch and its ZLink action. Fix the unresolved return-to-ZLink Wi-Fi handoff before claiming a complete reversible default setup. Selecting ZLink must also suppress DiPlay auto-start.
+4. Test a full reboot, sleep/wake, phone absence and later arrival, and a complete DiPlay-to-ZLink-to-DiPlay round trip. Keep the working private APK as the restore artifact.
+
+Enabling the ordinary DiPlay BootReceiver alone is insufficient: it opens the DiPlay home screen, the tested GT6 launch path sets auto-connect off, and it has no switcher-selection coordination. A coordinated startup path is needed to avoid racing ZLink or relaunching DiPlay after the user selects ZLink.
+
+This default setup is a proposed next change. No boot, radio, package removal or shortcut change was made while recording this plan.
