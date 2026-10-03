@@ -212,9 +212,10 @@ class AirPlaySession(
         return sent
     }
 
-    fun sendKnob(state: AirPlayKnobState, momentary: Boolean = true) {
-        sendHidReport(AirPlayHid.KNOB_HID_UID, AirPlayHid.knobReport(state))
-        if (momentary) sendHidReport(AirPlayHid.KNOB_HID_UID, AirPlayHid.knobReport(AirPlayKnobState()))
+    /** Keep a momentary press and its release together, and report an unavailable event channel. */
+    fun sendKnob(state: AirPlayKnobState, momentary: Boolean = true): Boolean = synchronized(eventWriteLock) {
+        val sent = sendHidReport(AirPlayHid.KNOB_HID_UID, AirPlayHid.knobReport(state))
+        sent && (!momentary || sendHidReport(AirPlayHid.KNOB_HID_UID, AirPlayHid.knobReport(AirPlayKnobState())))
     }
 
     fun sendKnobSelect(down: Boolean) =

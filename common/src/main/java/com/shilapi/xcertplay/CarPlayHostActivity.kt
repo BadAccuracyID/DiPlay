@@ -333,6 +333,14 @@ class CarPlayHostActivity : ComponentActivity() {
     private var latestStage = "Preparing CarPlay"
     private var darkMode = false
     private var activeAirPlaySession: AirPlaySession? = null
+    private val gt6KnobInput = Gt6CarPlayKnobInput { report, source ->
+        val detail = "GT6 knob $source wheel=${report.wheel} x=${report.x} y=${report.y} select=${report.select}"
+        val queued = controller?.sendKnob(report) { sent ->
+            runOnUiThread { if (!isDestroyed) appendLog("$detail sent=$sent") }
+        } == true
+        if (!queued) appendLog("$detail queued=false")
+        queued
+    }
     private val activeScreenStreamTypes = mutableSetOf<Int>()
     private var handshakeResetInProgress = false
     private var startAfterHandshakeReset = false
@@ -736,6 +744,7 @@ class CarPlayHostActivity : ComponentActivity() {
 
     // The steering-wheel voice key reaches the focused window; while CarPlay is on screen it opens Siri.
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (gt6KnobInput.key(event, gt6KnobActive())) return true
         if (!CarPlayMediaButton.opensSiri(event.keyCode)) return super.dispatchKeyEvent(event)
         if (event.action == KeyEvent.ACTION_UP) {
             val sent = controller?.requestSiri() == true
@@ -744,8 +753,17 @@ class CarPlayHostActivity : ComponentActivity() {
         return true
     }
 
+    override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
+        if (gt6KnobInput.motion(event, gt6KnobActive())) return true
+        return super.dispatchGenericMotionEvent(event)
+    }
+
+    private fun gt6KnobActive(): Boolean = Build.MODEL.trim().equals("GT6-CAR", ignoreCase = true) &&
+        controller?.hasActiveAirPlaySession() == true && !menuOpen && hasWindowFocus()
+
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
+        if (!hasFocus) gt6KnobInput.reset()
         if (hasFocus) applyFullscreenMode()
     }
 
@@ -3007,6 +3025,7 @@ class CarPlayHostActivity : ComponentActivity() {
                         return@runOnUiThread
                     }
                     activeAirPlaySession = session
+                    gt6KnobInput.reset()
                     CarPlayBackgroundSession.active = true
                     reconnectAttempts = 0
                     syncAirPlayDarkMode()
@@ -3017,7 +3036,10 @@ class CarPlayHostActivity : ComponentActivity() {
 
             override fun onSessionEnded(session: AirPlaySession) {
                 runOnUiThread {
-                    if (activeAirPlaySession === session) activeAirPlaySession = null
+                    if (activeAirPlaySession === session) {
+                        activeAirPlaySession = null
+                        gt6KnobInput.reset()
+                    }
                     CarPlayBackgroundSession.active = false
                     if (menuOpen || controllerGeneration != restartGeneration) {
                         return@runOnUiThread

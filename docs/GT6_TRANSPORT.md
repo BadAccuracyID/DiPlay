@@ -118,3 +118,7 @@ Private evidence: `carplay-tests/gt6-transport-research/app-20261003-0101/` (val
 3. Test coexistence with the OEM Bluetooth app and deliberate switching back to ZLink.
 
 Audio output, microphone, and scrolling-knob forwarding remain separate deferred compatibility work.
+
+## GT6 knob candidate, 2026-10-03
+
+A GT6 navigation-key handler and controller input dispatch are implemented. The standalone APK builds and 15 focused tests pass. Installation and physical knob behavior remain unverified because the user resumed from home without ADB. See [GT6_KNOB.md](GT6_KNOB.md) for the identified firmware input path and the headunit test.

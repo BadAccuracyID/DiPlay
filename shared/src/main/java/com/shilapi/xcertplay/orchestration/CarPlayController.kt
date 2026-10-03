@@ -23,6 +23,7 @@ import com.shilapi.xcertplay.airplay.AirPlayConfig
 import com.shilapi.xcertplay.airplay.AirPlayContact
 import com.shilapi.xcertplay.airplay.AirPlayDeviceInfo
 import com.shilapi.xcertplay.airplay.AirPlayIdentity
+import com.shilapi.xcertplay.airplay.AirPlayKnobState
 import com.shilapi.xcertplay.airplay.AirPlayMediaHandler
 import com.shilapi.xcertplay.airplay.AirPlaySession
 import com.shilapi.xcertplay.airplay.AirPlaySessionListener
@@ -344,6 +345,8 @@ class CarPlayController(
 
     fun isClosed(): Boolean = closed
 
+    fun hasActiveAirPlaySession(): Boolean = !closed && activeSession != null
+
     fun hasActiveAirPlayAttachment(): Boolean = synchronized(lifecycleLock) {
         !closed && vpnService?.isAttached() == true
     }
@@ -390,6 +393,21 @@ class CarPlayController(
         val session = activeSession ?: return false
         return try {
             touchExecutor.execute { session.sendTouch(contacts) }
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /** Queues one knob gesture on the input worker, including when the UI has been recreated. */
+    fun sendKnob(state: AirPlayKnobState, onSent: (Boolean) -> Unit = {}): Boolean {
+        if (closed) return false
+        val session = activeSession ?: return false
+        return try {
+            touchExecutor.execute {
+                val sent = !closed && activeSession === session && session.sendKnob(state)
+                onSent(sent)
+            }
             true
         } catch (_: Exception) {
             false
