@@ -1,6 +1,6 @@
 # GT6 CarPlay knob input
 
-On 3 October 2026, the user confirmed physical rotation and selection in wireless CarPlay. That test also exposed Back exiting to DiPlay and a white focus overlay across the video. The follow-up fixes below still require the user to confirm their behavior.
+On 3 October 2026, the user confirmed physical rotation and selection in wireless CarPlay. That test also exposed Back exiting to DiPlay and a white focus overlay across the video. After installing the follow-up, the user confirmed both issues are fixed.
 
 ## Identified input path
 
@@ -54,7 +54,7 @@ The expanded dispatch test decrypts the actual queued AirPlay commands and check
 
 ## Back and focus follow-up
 
-The follow-up build passed all 17 focused tests (13 input and 4 dispatch). Back is checked as button bit 2 with a neutral release, and a held key produces only one gesture. The build was installed after the user reported the two issues. Physical confirmation of the corrections is still pending.
+The follow-up build passed all 17 focused tests (13 input and 4 dispatch). Back is checked as button bit 2 with a neutral release, and a held key produces only one gesture. The build was installed after the user reported the two issues. The user confirmed that Back now navigates inside CarPlay and scrolling no longer whitens the screen. The private app log records a physical Back report with `sent=true`, and the view dump confirms the full-screen touch layer is non-focusable.
 
 ## Follow-up headunit test
 
@@ -68,4 +68,4 @@ Capture `adb logcat -s xcertplay-usb HeadunitButtons` for transport and MCU evid
 
 ## Remaining priorities
 
-P1 is confirming the Back and focus-overlay corrections on the headunit. P2 remains the ZLink phone Wi-Fi handoff, microphone input and speaker audio output.
+P1 knob rotation, selection, Back and removal of the white focus overlay are physically confirmed on this headunit. P2 remains the ZLink phone Wi-Fi handoff, microphone input and speaker audio output.
