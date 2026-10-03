@@ -21,9 +21,11 @@ internal class Gt6CarPlayKnobInput(private val send: (AirPlayKnobState, String) 
         val report = when (event.keyCode) {
             KeyEvent.KEYCODE_TAB -> AirPlayKnobState(wheel = if (event.isShiftPressed) -1 else 1)
             KeyEvent.KEYCODE_DPAD_UP -> AirPlayKnobState(wheel = -1)
-            KeyEvent.KEYCODE_DPAD_DOWN -> AirPlayKnobState(wheel = 1)
-            KeyEvent.KEYCODE_DPAD_LEFT -> AirPlayKnobState(x = -1)
-            KeyEvent.KEYCODE_DPAD_RIGHT -> AirPlayKnobState(x = 1)
+            // X/Y are absolute joystick axes, unlike the relative rotation wheel.
+            // Use a full deflection within the descriptor's advertised -127..127 range.
+            KeyEvent.KEYCODE_DPAD_DOWN -> AirPlayKnobState(y = 127)
+            KeyEvent.KEYCODE_DPAD_LEFT -> AirPlayKnobState(x = -127)
+            KeyEvent.KEYCODE_DPAD_RIGHT -> AirPlayKnobState(x = 127)
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER ->
                 AirPlayKnobState(select = true)
             else -> return false

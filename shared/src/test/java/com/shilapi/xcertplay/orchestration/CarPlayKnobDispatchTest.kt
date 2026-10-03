@@ -28,20 +28,33 @@ class CarPlayKnobDispatchTest {
             field(controller, "activeSession", session)
             controller.attachUi(object : AirPlaySessionListener {}, {})
             assertTrue(controller.hasActiveAirPlaySession())
-            val completed = CountDownLatch(1)
-            var sent = false
-            assertTrue(controller.sendKnob(AirPlayKnobState(select = true)) { sent = it; completed.countDown() })
+            // Four-byte report layout verified against ZLink's native HIDKnobFillReport.
+            val gestures = listOf(
+                AirPlayKnobState(wheel = -1) to byteArrayOf(0, 0, 0, -1),
+                AirPlayKnobState(wheel = 1) to byteArrayOf(0, 0, 0, 1),
+                AirPlayKnobState(select = true) to byteArrayOf(1, 0, 0, 0),
+                AirPlayKnobState(x = -127) to byteArrayOf(0, -127, 0, 0),
+                AirPlayKnobState(x = 127) to byteArrayOf(0, 127, 0, 0),
+                AirPlayKnobState(y = 127) to byteArrayOf(0, 0, 127, 0),
+            )
+            val completed = CountDownLatch(gestures.size)
+            val results = java.util.concurrent.CopyOnWriteArrayList<Boolean>()
+            for ((state, _) in gestures) {
+                assertTrue(controller.sendKnob(state) { results += it; completed.countDown() })
+            }
             assertTrue(completed.await(3, TimeUnit.SECONDS))
-            assertTrue(sent)
+            assertTrue(results.all { it })
             val plain = ControlCipher(ByteArray(32), ByteArray(32)).decrypt(wire.toByteArray()).data
             val commands = commands(plain)
-            assertEquals(2, commands.size)
+            assertEquals(gestures.size * 2, commands.size)
             for (command in commands) {
                 assertEquals("hidSendReport", command["type"])
                 assertEquals(AirPlayHid.KNOB_HID_UID.toString(16), command["uuid"])
             }
-            assertArrayEquals(byteArrayOf(1, 0, 0, 0), commands[0]["hidReport"] as ByteArray)
-            assertArrayEquals(byteArrayOf(0, 0, 0, 0), commands[1]["hidReport"] as ByteArray)
+            for ((index, gesture) in gestures.withIndex()) {
+                assertArrayEquals(gesture.second, commands[index * 2]["hidReport"] as ByteArray)
+                assertArrayEquals(byteArrayOf(0, 0, 0, 0), commands[index * 2 + 1]["hidReport"] as ByteArray)
+            }
         } finally { controller.close(); session.close() }
     }
 
@@ -55,6 +68,21 @@ class CarPlayKnobDispatchTest {
             controller.close()
             assertFalse(controller.hasActiveAirPlaySession())
             assertFalse(controller.sendKnob(AirPlayKnobState(wheel = 1)))
+        } finally { controller.close(); session.close() }
+    }
+
+    @Test fun unavailableEventChannelReportsFailureWithoutSending() {
+        val controller = controller()
+        val (session, wire) = session()
+        try {
+            field(controller, "activeSession", session)
+            field(session, "eventCipher", null)
+            val completed = CountDownLatch(1)
+            var sent = true
+            assertTrue(controller.sendKnob(AirPlayKnobState(select = true)) { sent = it; completed.countDown() })
+            assertTrue(completed.await(3, TimeUnit.SECONDS))
+            assertFalse(sent)
+            assertEquals(0, wire.size())
         } finally { controller.close(); session.close() }
     }
 
@@ -96,7 +124,7 @@ class CarPlayKnobDispatchTest {
         return session to wire
     }
 
-    private fun field(target: Any, name: String, value: Any) {
+    private fun field(target: Any, name: String, value: Any?) {
         target.javaClass.getDeclaredField(name).apply { isAccessible = true }.set(target, value)
     }
 

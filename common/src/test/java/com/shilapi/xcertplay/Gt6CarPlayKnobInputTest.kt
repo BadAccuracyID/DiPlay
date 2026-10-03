@@ -53,8 +53,8 @@ class Gt6CarPlayKnobInputTest {
         press(KeyEvent.KEYCODE_DPAD_LEFT)
         press(KeyEvent.KEYCODE_DPAD_RIGHT)
         press(KeyEvent.KEYCODE_TAB, KeyEvent.META_SHIFT_ON)
-        assertEquals(listOf(AirPlayKnobState(wheel = 1), AirPlayKnobState(x = -1),
-            AirPlayKnobState(x = 1), AirPlayKnobState(wheel = -1)), sent)
+        assertEquals(listOf(AirPlayKnobState(y = 127), AirPlayKnobState(x = -127),
+            AirPlayKnobState(x = 127), AirPlayKnobState(wheel = -1)), sent)
     }
 
     @Test fun ordinaryAndroidButtonsAndShortcutsPassThrough() {
