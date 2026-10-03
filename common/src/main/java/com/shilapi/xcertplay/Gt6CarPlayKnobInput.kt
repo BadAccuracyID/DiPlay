@@ -28,10 +28,11 @@ internal class Gt6CarPlayKnobInput(private val send: (AirPlayKnobState, String) 
             KeyEvent.KEYCODE_DPAD_RIGHT -> AirPlayKnobState(x = 127)
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER ->
                 AirPlayKnobState(select = true)
+            KeyEvent.KEYCODE_BACK -> AirPlayKnobState(back = true)
             else -> return false
         }
-        // A held select must not activate several CarPlay items. Rotation may repeat.
-        if (report.select && event.repeatCount > 0) return event.keyCode in capturedKeys
+        // A held button must not select several items or back out of several screens.
+        if ((report.select || report.back) && event.repeatCount > 0) return event.keyCode in capturedKeys
         if (!send(report, "key=${KeyEvent.keyCodeToString(event.keyCode)} repeat=${event.repeatCount}")) return false
         capturedKeys += event.keyCode
         return true

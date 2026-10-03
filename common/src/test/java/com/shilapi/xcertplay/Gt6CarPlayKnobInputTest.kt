@@ -48,6 +48,16 @@ class Gt6CarPlayKnobInputTest {
         assertEquals(listOf(1, 1), sent.map { it.wheel })
     }
 
+    @Test fun backSendsCarPlayBackOnceAndConsumesItsRelease() {
+        assertTrue(input.key(key(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BACK), true))
+        assertTrue(input.key(key(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BACK, repeat = 1), true))
+        assertTrue(input.key(key(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BACK), true))
+        assertEquals(listOf(AirPlayKnobState(back = true)), sent)
+        assertArrayEquals(byteArrayOf(4, 0, 0, 0), AirPlayHid.knobReport(sent.single()))
+        assertFalse(input.key(key(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BACK), true))
+        assertFalse(input.key(key(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BACK), false))
+    }
+
     @Test fun directionKeysAndShiftTabAreSupported() {
         press(KeyEvent.KEYCODE_DPAD_DOWN)
         press(KeyEvent.KEYCODE_DPAD_LEFT)
@@ -58,7 +68,7 @@ class Gt6CarPlayKnobInputTest {
     }
 
     @Test fun ordinaryAndroidButtonsAndShortcutsPassThrough() {
-        for (code in listOf(KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_HOME,
+        for (code in listOf(KeyEvent.KEYCODE_HOME,
             KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_A)) {
             assertFalse(input.key(key(KeyEvent.ACTION_DOWN, code), true))
             assertFalse(input.key(key(KeyEvent.ACTION_UP, code), true))

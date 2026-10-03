@@ -57,6 +57,7 @@ import com.shilapi.xcertplay.airplay.CarPlayDisplayScale
 import com.shilapi.xcertplay.airplay.CarPlayUiScale
 import com.shilapi.xcertplay.airplay.AirPlayDisplayConfig
 import com.shilapi.xcertplay.airplay.AirPlayIdentity
+import com.shilapi.xcertplay.airplay.AirPlayKnobState
 import com.shilapi.xcertplay.airplay.AirPlayIcon
 import com.shilapi.xcertplay.airplay.CarPlayClusterDisplay
 import com.shilapi.xcertplay.airplay.AirPlaySafeArea
@@ -333,14 +334,7 @@ class CarPlayHostActivity : ComponentActivity() {
     private var latestStage = "Preparing CarPlay"
     private var darkMode = false
     private var activeAirPlaySession: AirPlaySession? = null
-    private val gt6KnobInput = Gt6CarPlayKnobInput { report, source ->
-        val detail = "GT6 knob $source wheel=${report.wheel} x=${report.x} y=${report.y} select=${report.select}"
-        val queued = controller?.sendKnob(report) { sent ->
-            runOnUiThread { if (!isDestroyed) appendLog("$detail sent=$sent") }
-        } == true
-        if (!queued) appendLog("$detail queued=false")
-        queued
-    }
+    private val gt6KnobInput = Gt6CarPlayKnobInput(::sendGt6KnobReport)
     private val activeScreenStreamTypes = mutableSetOf<Int>()
     private var handshakeResetInProgress = false
     private var startAfterHandshakeReset = false
@@ -430,6 +424,8 @@ class CarPlayHostActivity : ComponentActivity() {
                 override fun handleOnBackPressed() {
                     if (menuOpen) {
                         if (safeAreaEditorActive) closeSafeAreaEditor() else cancelSettingsEdits()
+                    } else if (gt6KnobActive() && sendGt6KnobReport(AirPlayKnobState(back = true), "system-back")) {
+                        // System Back follows the same CarPlay route as the physical key.
                     } else {
                         showDiPlayHome()
                     }
@@ -761,6 +757,16 @@ class CarPlayHostActivity : ComponentActivity() {
     private fun gt6KnobActive(): Boolean = Build.MODEL.trim().equals("GT6-CAR", ignoreCase = true) &&
         controller?.hasActiveAirPlaySession() == true && !menuOpen && hasWindowFocus()
 
+    private fun sendGt6KnobReport(report: AirPlayKnobState, source: String): Boolean {
+        val detail = "GT6 knob $source wheel=${report.wheel} x=${report.x} y=${report.y} " +
+            "select=${report.select} back=${report.back}"
+        val queued = controller?.sendKnob(report) { sent ->
+            runOnUiThread { if (!isDestroyed) appendLog("$detail sent=$sent") }
+        } == true
+        if (!queued) appendLog("$detail queued=false")
+        return queued
+    }
+
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (!hasFocus) gt6KnobInput.reset()
@@ -814,6 +820,11 @@ class CarPlayHostActivity : ComponentActivity() {
         }
         val gestureLayer = View(this).apply {
             isClickable = true
+            // Key injection can enter non-touch mode before dispatchKeyEvent consumes it.
+            // This full-screen touch target must never become a highlighted Android control.
+            isFocusable = false
+            isFocusableInTouchMode = false
+            setDefaultFocusHighlightEnabled(false)
             setOnTouchListener { view, event -> onHostTouch(view, event) }
         }
         root.addView(video, FrameLayout.LayoutParams(-1, -1))

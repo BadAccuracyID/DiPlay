@@ -33,6 +33,7 @@ class CarPlayKnobDispatchTest {
                 AirPlayKnobState(wheel = -1) to byteArrayOf(0, 0, 0, -1),
                 AirPlayKnobState(wheel = 1) to byteArrayOf(0, 0, 0, 1),
                 AirPlayKnobState(select = true) to byteArrayOf(1, 0, 0, 0),
+                AirPlayKnobState(back = true) to byteArrayOf(4, 0, 0, 0),
                 AirPlayKnobState(x = -127) to byteArrayOf(0, -127, 0, 0),
                 AirPlayKnobState(x = 127) to byteArrayOf(0, 127, 0, 0),
                 AirPlayKnobState(y = 127) to byteArrayOf(0, 0, 127, 0),
