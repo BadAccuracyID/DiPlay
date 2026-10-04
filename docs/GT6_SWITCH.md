@@ -95,3 +95,19 @@ The saved hotspot configuration was backed up on the headunit as `/data/adb/hots
 The return timer restored DiPlay. Live logs showed incoming CarPlay video and touch responses, and root readback confirmed `selected=diplay` and `init.svc.zlink5=stopped`. Switcher 0.2.0 and the updated watcher were installed; the watcher passed Android shell syntax checking and SHA-256 readback. The button APK is version 0.8, but EventCenter has not restarted to load that hook. Navi retains its existing direct DiPlay mapping.
 
 The user requested wrapping up. No reboot or further handoff test was run. Next session: configure Navi's selected-receiver action and reboot to load the new hook, verify selected startup and ignition sleep/wake, and trace ZLink's remaining CarPlay session failure. Do not report those checks as completed.
+
+## Offline candidate 0.3.0, 4 October 2026
+
+Version 0.3.0 is built locally and has not been installed or tested on the headunit. No ADB connection or device command was attempted during this session.
+
+The startup watcher now treats ACC off/on as a wake event even if Android remains Awake. Failed power or window-focus reads defer launch. Failed Android activity launches retry up to three times, including failures where `am` prints an error and returns exit status zero. The coordinator also checks these launch errors before saving a new receiver choice. The root command runner drains stdout and stderr concurrently, bounds retained output, and enforces process timeouts.
+
+Selecting ZLink starts a read-only diagnostic collector after launching the receiver and saving its selection. It records at most 30 samples, with a three-minute process limit. It stops sampling when the saved receiver changes. The report records hotspot configuration match/state, Java/native service presence, local projection interface addresses, native TCP listener ports when `ss` is available, foreground connection mode, and fixed event counts. It does not copy credentials, certificates, Bluetooth addresses or raw vendor log lines. Native counts cover the latest rotating log, so they can include earlier events; interpret them alongside sample times and state changes.
+
+Use **Save connection report** to export the latest capture into `Downloads/CarPlaySwitch`. The file can be saved while capture is still running. This storage/export path needs headunit validation. Opening the switcher can affect ZLink's foreground eligibility; the capture starts while ZLink is open so it can record the earlier handoff.
+
+Offline review of the 3 October WPA2 test found successful iPhone authentication, followed by ZLink's own `wirelessCmd stopHotspot`. Android reported the AP disabling, then the native receiver reported AP disconnected and its iAP watchdog timed out. This happened twice in the saved trace. It establishes that ZLink requested the stop; it does not establish why it did so or prove a fix. This candidate does not suppress that cleanup command.
+
+Local verification: 22 tests pass across the coordinator, actual generated watcher shell with synthetic Android responses, root process I/O/timeouts, and diagnostic filtering. The APK builds and both generated scripts pass host shell syntax checking. No authentication asset files were found in the candidate APK.
+
+Next in-car sequence: install 0.3.0, choose DiPlay once to install its updated watcher, load/configure the selected-receiver Navi hook, then test boot and ignition wake. Run one controlled ZLink handoff with a return timer and inspect the captured report alongside the native AirPlay endpoint/service state. Preserve the working DiPlay build and the WPA2 hotspot configuration. ZLink CarPlay reconnection remains unresolved.

@@ -88,6 +88,20 @@ class SwitchCoordinatorTest {
         assertEquals("zlink", root.selected)
     }
 
+    @Test fun androidLaunchErrorInSuccessfulShellDoesNotSaveNewReceiver() {
+        root.launchOutput = "Error: Activity class does not exist."
+        assertThrows(IOException::class.java) { coordinator.switch(false) }
+        assertEquals("diplay", root.selected)
+    }
+
+    @Test fun rejectedReopenDoesNotResetAnActiveConnection() {
+        root.service = true
+        root.launchOutput = "Security exception: Permission Denial"
+        assertThrows(IOException::class.java) { coordinator.openSelected() }
+        assertTrue(released.isEmpty())
+        assertFalse(root.commands.any { it.contains("force-stop") })
+    }
+
     @Test fun missingPatchedPackageRestoresZLinkThroughSameValidatedSwitch() {
         installed = false
         coordinator.openSelected()
@@ -104,6 +118,7 @@ class SwitchCoordinatorTest {
         var ap = false
         var failRepair = false
         var failLaunch = false
+        var launchOutput = "Starting: Intent"
         override fun run(command: String, timeoutSeconds: Long): String {
             commands += command
             when {
@@ -120,6 +135,7 @@ class SwitchCoordinatorTest {
                     ap = true
                 }
                 command.startsWith("am start") && failLaunch -> throw IOException("Launch failed")
+                command.startsWith("am start") -> return launchOutput
                 command.contains("printf diplay >") -> selected = "diplay"
                 command.startsWith("printf zlink >") -> selected = "zlink"
             }

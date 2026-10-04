@@ -7,7 +7,6 @@ import com.shilapi.xcertplay.transport.gt6.Gt6ProjectionControl
 import java.io.File
 import java.io.IOException
 import java.io.RandomAccessFile
-import java.util.concurrent.TimeUnit
 
 internal class SwitchCoordinator(
     private val context: Context,
@@ -44,7 +43,7 @@ internal class SwitchCoordinator(
         if (selected == "diplay" && pkg != null && hasDiPlayService(pkg)) {
             // An active or connecting controller owns its radios. Navi/wake only reopen its screen.
             trace("Reopening DiPlay without resetting its connection.")
-            root.run("am start -n ${quote("$pkg/com.shilapi.xcertplay.CarPlayHostActivity")}")
+            startActivity("am start -n ${quote("$pkg/com.shilapi.xcertplay.CarPlayHostActivity")}")
         } else if (selected == "zlink" && nativeLinkReady() && hotspotReady()) {
             trace("Reopening ZLink without resetting its connection.")
             launchZLink()
@@ -98,7 +97,7 @@ internal class SwitchCoordinator(
             root.run("if [ -f $helper ]; then $bridge stop; fi; cmd wifi stop-softap")
             if (toDiPlay) {
                 root.run("svc wifi enable")
-                root.run("am start -n ${quote(diPlay!! + "/com.shilapi.xcertplay.Gt6StartWirelessActivity")} --es phone ${quote(state.lastPhone)}")
+                startActivity("am start -n ${quote(diPlay!! + "/com.shilapi.xcertplay.Gt6StartWirelessActivity")} --es phone ${quote(state.lastPhone)}")
                 root.run("printf %s ${quote(diPlay)} > $base/diplay-package; printf diplay > $base/selected")
                 trace("DiPlay selected. Accept CarPlay on your iPhone if asked.")
             } else {
@@ -120,6 +119,8 @@ internal class SwitchCoordinator(
                 launchZLink(zLink)
                 root.run("printf zlink > $base/selected")
                 restoreHotspotWatcher()
+                runCatching { ZLinkDiagnostics.start(root) }
+                    .onFailure { trace("ZLink opened; diagnostic capture could not start.") }
                 trace("ZLink selected. Accept CarPlay on your iPhone if asked.")
             }
         } catch (failure: Exception) {
@@ -135,7 +136,18 @@ internal class SwitchCoordinator(
 
     private fun launchZLink(component: String = zLinkComponent()) {
         // Preserve the action/category used by the OEM launcher, not just its component.
-        root.run("am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n ${quote(component)}")
+        startActivity("am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n ${quote(component)}")
+    }
+
+    private fun startActivity(command: String) {
+        val output = root.run(command)
+        if (output.lineSequence().any {
+                val line = it.trimStart()
+                line.startsWith("Error:") || line.startsWith("Exception") ||
+                    line.contains("SecurityException") || line.startsWith("Security exception:")
+            }) {
+            throw IOException("Android rejected the receiver launch. Check the installed app and its permissions.")
+        }
     }
 
     private fun nativeLinkReady() = root.run("pidof 'z-'link || true").trim().isNotEmpty()
@@ -157,17 +169,3 @@ internal class SwitchCoordinator(
 }
 
 internal interface CommandRunner { fun run(command: String, timeoutSeconds: Long = 35): String }
-
-internal class RootCommands : CommandRunner {
-    override fun run(command: String, timeoutSeconds: Long): String {
-        val process = ProcessBuilder("/debug_ramdisk/su", "-c", command).start()
-        try {
-            process.outputStream.close()
-            if (!process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) throw IOException("Root command timed out. Check Magisk access and retry.")
-            val output = process.inputStream.bufferedReader().readText()
-            val error = process.errorStream.bufferedReader().readText()
-            if (process.exitValue() != 0) throw IOException(error.trim().take(200).ifBlank { "The car rejected a switch step" })
-            return output
-        } finally { process.destroy(); process.inputStream.close(); process.errorStream.close() }
-    }
-}
