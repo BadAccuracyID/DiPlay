@@ -18,7 +18,7 @@ internal object StartupScripts {
         done
         log() { printf '%s %s\n' "${'$'}(date '+%Y-%m-%dT%H:%M:%S' 9>&-)" "${'$'}*" >> "${'$'}base/startup.log"; }
         printf '%s\n' "${'$'}${'$'}" > "${'$'}base/watcher.pid"
-        printf '4\n' > "${'$'}base/watcher-version"
+        printf '5\n' > "${'$'}base/watcher-version"
         trap 'rm -f "${'$'}base/watcher.pid"' EXIT
         awake=no
         attempts=0
@@ -64,7 +64,9 @@ internal object StartupScripts {
                 else
                     result="${'$'}(cat "${'$'}base/startup-result" 2>/dev/null 9>&-)"
                     if [ "${'$'}result" = "${'$'}pending success" ]; then
-                        log 'Receiver startup confirmed (service ready; phone connection not checked)'
+                        if [ "${'$'}request_receiver" = diplay ]; then
+                            log 'Receiver preparation confirmed (radio access ready; DiPlay not opened)'
+                        else log 'Receiver startup confirmed (service ready; phone connection not checked)'; fi
                         pending=; awake=yes; attempts=0; reason=wake
                     elif [ "${'$'}result" = "${'$'}pending failure" ] || [ "${'$'}tick" -ge "${'$'}deadline" ]; then
                         log "Receiver startup failed or timed out (${'$'}attempts/3)"
@@ -104,8 +106,16 @@ internal object StartupScripts {
                 request_receiver="${'$'}selected"
                 deadline=${'$'}((tick+240))
                 attempts=${'$'}((attempts+1))
-                log "Opening selected receiver (${'$'}reason, attempt ${'$'}attempts/3)"
-                if ! timeout 10 am start -n com.efran.carplayswitch/com.shilapi.xcertplay.gt6switch.OpenSelectedActivity \
+                if [ "${'$'}selected" = diplay ]; then
+                    launch_mode=start-foreground-service
+                    component=com.efran.carplayswitch/com.shilapi.xcertplay.gt6switch.PrepareSelectedService
+                    log "Preparing selected receiver (${'$'}reason, attempt ${'$'}attempts/3)"
+                else
+                    launch_mode=start
+                    component=com.efran.carplayswitch/com.shilapi.xcertplay.gt6switch.OpenSelectedActivity
+                    log "Opening selected receiver (${'$'}reason, attempt ${'$'}attempts/3)"
+                fi
+                if ! timeout 10 am "${'$'}launch_mode" -n "${'$'}component" \
                     --es reason "${'$'}reason" --es startup_request "${'$'}pending" --es expected_receiver "${'$'}selected" \
                     > "${'$'}base/startup-launch.txt" 2>&1 9>&- ||
                     grep -Eq '^[[:space:]]*(Error:|Exception|Security exception:)|SecurityException' "${'$'}base/startup-launch.txt"; then

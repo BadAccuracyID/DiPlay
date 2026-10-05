@@ -26,7 +26,7 @@ The switcher validates the exact native firmware and checks the actual projectio
 
 ## Persistent changes and recovery
 
-Selection is saved under `/data/adb/gt6-carplay-switch/`. Version 0.2 installs a Magisk watcher at `/data/adb/service.d/gt6-carplay-switch.sh`. After Android boot and Bluetooth readiness, it opens the saved receiver through the same coordinator used by the app. It also opens the receiver after Android reports a sleep-to-awake transition, deferring while the reversing camera is focused. The watcher's lock prevents duplicate watchers.
+Selection is saved under `/data/adb/gt6-carplay-switch/`. A Magisk watcher at `/data/adb/service.d/gt6-carplay-switch.sh` waits for Android boot, Bluetooth and ACC readiness. Version 0.5 prepares selected DiPlay in the background at boot/wake, leaving the current screen visible. It does not open DiPlay or request a phone connection. ZLink retains its existing startup path. Camera focus defers preparation, and the watcher's lock prevents duplicate watchers.
 
 An active DiPlay session is reopened without changing radios or releasing its phone. ZLink with a running native process and matching hotspot is also reopened without resetting it. Otherwise, the coordinator performs the checked handoff. Missing patched DiPlay falls back through the full ZLink handoff. If the switcher is removed, the watcher restores the native ZLink supervisor and its owned hotspot pause, then exits; that recovery alone does not prove CarPlay connected.
 
@@ -129,3 +129,16 @@ Version 0.4 addresses the known gaps:
 Install both new candidate APKs when ADB is available. Open CarPlay Switch once after updating it to replace the old watcher; root permission must already be granted or accepted. Verify `watcher-version=4`, a live watcher, and service startup after reboot and ignition wake. Installing an APK alone does not replace an already running root watcher.
 
 The watcher intentionally opens the saved receiver at boot/wake. After successful startup it does not continuously bring CarPlay over other apps. A delayed-phone connection is owned by DiPlay's existing reconnect controller; its reliability needs the phone-absent/later-arrival car test.
+
+## Version 0.5: prepare DiPlay without opening it
+
+The user requested background preparation at startup and control through DiPlay's **Automatic connection** setting. Version 0.5 supersedes the DiPlay opening behavior described for earlier versions above.
+
+- Boot/wake starts the shell/root-only `PrepareSelectedService`, a short foreground service with no activity. It validates the saved receiver and native peer, stops ZLink's Android app and native supervisor, releases only an occupied compatible profile belonging to the verified last phone, clears the previous projection network, and leaves Wi-Fi ready for DiPlay.
+- An already active DiPlay service is preserved, including its screen and radios. Preparation never force-stops either DiPlay package, opens a DiPlay activity, requests a new CarPlay connection, or edits DiPlay preferences.
+- The request-specific success receipt now confirms radio preparation for DiPlay. It does not require a DiPlay connection service and does not claim the phone connected. Failures retain the existing retries and cooldown.
+- DiPlay's setting is **connect when DiPlay opens**. With it off, opening the app leaves connection under its **Connect phone** button. With it on, normal opening uses DiPlay's saved connection type and selected phone. Boot/wake itself opens neither app nor CarPlay.
+- The GT6 manual connection helper no longer resets Automatic connection to off. The switcher's explicit **Use DiPlay** handoff remains an intentional connection request. Its setting is preserved.
+- Existing DiPlay `BootReceiver` overrides remain disabled on this GT6 so a separate boot launcher cannot race the selected-receiver watcher. Startup selection remains with CarPlay Switch.
+
+Install the updated DiPlay APK and CarPlay Switch 0.5, then open the switcher once to replace the watcher. Expected `watcher-version=5`. Test a real reboot: launcher stays visible, DiPlay has no new connection service, ZLink native service is stopped, radio preparation has a matching receipt, and the saved Automatic connection value is unchanged. Then test normal app opening with the setting off and on. Existing ignition sleep/wake and physical headlight tests still require the car.

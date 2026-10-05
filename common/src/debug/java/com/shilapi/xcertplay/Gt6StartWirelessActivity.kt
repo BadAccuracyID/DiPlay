@@ -31,7 +31,6 @@ class Gt6StartWirelessActivity : Activity() {
                     } finally { root.destroy(); root.inputStream.close(); root.errorStream.close() }
                 }
                 DiPlayPreferences.savePhone(this, phone.chunked(2).joinToString(":"), "Your iPhone")
-                DiPlayPreferences.saveAutoConnect(this, false)
                 AirPlayPersistence.saveGt6OemBluetoothEnabled(this, true)
                 AirPlayPersistence.saveWirelessEnabled(this, true)
                 AirPlayPersistence.saveWirelessHotspotMode(this, WirelessHotspotMode.WIFI_P2P)

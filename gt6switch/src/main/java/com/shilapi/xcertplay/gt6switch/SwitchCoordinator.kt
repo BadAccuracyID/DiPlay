@@ -35,6 +35,21 @@ internal class SwitchCoordinator(
 
     fun switch(toDiPlay: Boolean) = locked { perform(toDiPlay) }
 
+    /** Boot/wake gives DiPlay radio access; its own UI and auto-connect preference own connection. */
+    fun prepareSelected(expectedReceiver: String) = locked {
+        checkDevice()
+        val selected = root.run("cat $base/selected 2>/dev/null || true").trim()
+        if (selected != expectedReceiver || selected != "diplay") {
+            throw IOException("Receiver selection changed; preparation cancelled")
+        }
+        val pkg = diPlayPackage() ?: throw IOException("Patched DiPlay is missing")
+        if (hasDiPlayService(pkg)) {
+            trace("DiPlay already owns its connection; screen and radios preserved.")
+        } else {
+            perform(true, prepareOnly = true)
+        }
+    }
+
     /** Update/restart startup independently of a radio handoff, including after an APK update. */
     fun repairStartupWatcher() = locked {
         checkDevice()
@@ -96,7 +111,7 @@ internal class SwitchCoordinator(
         check(root.run("id -u").trim() == "0") { "Root access was not granted" }
     }
 
-    private fun perform(toDiPlay: Boolean) {
+    private fun perform(toDiPlay: Boolean, prepareOnly: Boolean = false) {
         checkDevice()
         val diPlay = diPlayPackage()
         if (toDiPlay && diPlay == null) throw IOException("Install the GT6 DiPlay build first")
@@ -109,25 +124,27 @@ internal class SwitchCoordinator(
         if (!toDiPlay && root.run("test -f $helper && test -x /data/adb/hotspot/hotspotctl.sh && echo yes").trim() != "yes") {
             throw IOException("The GT6 hotspot helper is missing; no apps were changed")
         }
-        installBootSelection()
-        trace("Closing the current CarPlay connection…")
+        if (!prepareOnly) installBootSelection()
+        trace(if (prepareOnly) "Preparing DiPlay radio access in the background…" else "Closing the current CarPlay connection…")
         root.run("if [ ! -e $pause ]; then touch $pause; touch $base/owns-hotspot-pause; fi")
         try {
-            root.run("am force-stop com.zjinnova.zlink; am force-stop com.shihab.diplay.hudtest; am force-stop com.shihab.diplay")
+            root.run(if (prepareOnly) "am force-stop com.zjinnova.zlink"
+                else "am force-stop com.zjinnova.zlink; am force-stop com.shihab.diplay.hudtest; am force-stop com.shihab.diplay")
             root.run("setprop ctl.stop zlink5; i=0; while [ \"\$(getprop init.svc.zlink5)\" != stopped ] && [ \"\$i\" -lt 8 ]; do sleep 1; i=\$((i+1)); done; test \"\$(getprop init.svc.zlink5)\" = stopped")
             // Init must stop the supervisor and its child. Never kill an unverified PID.
             if (nativeLinkReady()) {
                 throw IOException("ZLink's native service did not stop")
             }
-            release(state.lastPhone)
+            if (!prepareOnly || state.profileMask != 0 || state.peer != null) release(state.lastPhone)
             trace("Previous connection released.")
             root.run("cmd wifip2p init >/dev/null; cmd wifip2p remove-group >/dev/null; cmd wifip2p deinit >/dev/null")
             root.run("if [ -f $helper ]; then $bridge stop; fi; cmd wifi stop-softap")
             if (toDiPlay) {
                 root.run("svc wifi enable")
-                startActivity("am start -n ${quote(diPlay!! + "/com.shilapi.xcertplay.Gt6StartWirelessActivity")} --es phone ${quote(state.lastPhone)}")
-                root.run("printf %s ${quote(diPlay)} > $base/diplay-package; printf diplay > $base/selected")
-                trace("DiPlay selected. Accept CarPlay on your iPhone if asked.")
+                if (!prepareOnly) startActivity("am start -n ${quote(diPlay!! + "/com.shilapi.xcertplay.Gt6StartWirelessActivity")} --es phone ${quote(state.lastPhone)}")
+                root.run("printf %s ${quote(diPlay!!)} > $base/diplay-package; printf diplay > $base/selected")
+                trace(if (prepareOnly) "DiPlay ready. Open DiPlay to use its Automatic connection setting."
+                    else "DiPlay selected. Accept CarPlay on your iPhone if asked.")
             } else {
                 trace("Preparing ZLink’s wireless connection…")
                 // Restore country/channel/configuration as well as starting tethering.

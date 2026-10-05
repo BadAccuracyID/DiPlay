@@ -38,6 +38,46 @@ class SwitchCoordinatorTest {
         assertFalse(root.commands.any { it.contains("force-stop") || it.contains("svc wifi") })
     }
 
+    @Test fun preparationStopsZLinkWithoutOpeningDiPlayOrWritingItsPreferences() {
+        root.native = true
+        peer = Gt6ProjectionControl.State(1, phone, phone)
+        coordinator.prepareSelected("diplay")
+        assertEquals(listOf(phone), released)
+        assertTrue(root.commands.any { it.contains("ctl.stop zlink5") })
+        assertTrue(root.commands.any { it == "am force-stop com.zjinnova.zlink" })
+        assertTrue(root.commands.any { it == "svc wifi enable" })
+        assertFalse(root.commands.any { it.startsWith("am start") || it.contains("force-stop com.shihab.diplay") || it.contains("shared_prefs") })
+    }
+
+    @Test fun preparationPreservesAnActiveDiPlaySessionAndItsScreen() {
+        root.service = true
+        coordinator.prepareSelected("diplay")
+        assertEquals(0, inspections)
+        assertTrue(released.isEmpty())
+        assertFalse(root.commands.any { it.startsWith("am start") || it.contains("force-stop") || it.contains("svc wifi") })
+    }
+
+    @Test fun preparationRejectsAnotherPhoneBeforeRadioChanges() {
+        peer = Gt6ProjectionControl.State(1, "AABBCCDDEEFF", phone)
+        assertThrows(IOException::class.java) { coordinator.prepareSelected("diplay") }
+        assertTrue(released.isEmpty())
+        assertFalse(root.commands.any { it.contains("force-stop") || it.contains("ctl.stop") })
+    }
+
+    @Test fun preparationDoesNotReleaseAnIdlePhone() {
+        coordinator.prepareSelected("diplay")
+        assertTrue(released.isEmpty())
+        assertFalse(root.commands.any { it.startsWith("am start") })
+    }
+
+    @Test fun preparationRejectsChangedReceiverOrMissingDiPlay() {
+        root.selected = "zlink"
+        assertThrows(IOException::class.java) { coordinator.prepareSelected("diplay") }
+        root.selected = "diplay"; installed = false
+        assertThrows(IOException::class.java) { coordinator.prepareSelected("diplay") }
+        assertFalse(root.commands.any { it.contains("force-stop") || it.contains("ctl.stop") })
+    }
+
     @Test fun readyZLinkIsReopenedWithoutResettingItsConnection() {
         root.selected = "zlink"; root.native = true; root.ap = true
         coordinator.openSelected()

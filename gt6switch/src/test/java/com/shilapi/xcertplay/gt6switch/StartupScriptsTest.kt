@@ -43,6 +43,18 @@ class StartupScriptsTest {
         assertEquals(listOf("boot"), runWatcher(List(5) { "1 Awake 0" }))
     }
 
+    @Test fun diplayBootOnlyRequestsBackgroundPreparation() {
+        val commands = mutableListOf<String>()
+        runWatcher(List(4) { "1 Awake 0" }, commands = commands)
+        assertEquals(listOf("start-foreground-service"), commands)
+    }
+
+    @Test fun zlinkBootKeepsItsExistingActivityLaunch() {
+        val commands = mutableListOf<String>()
+        runWatcher(List(4) { "1 Awake 0" }, selected = "zlink", commands = commands)
+        assertEquals(listOf("start"), commands)
+    }
+
     @Test fun ignitionWakeIsHandledWhenAndroidNeverSleeps() {
         assertEquals(listOf("boot", "wake"), runWatcher(listOf("1 Awake 0", "0 Awake 0", "1 Awake 0", "1 Awake 0")))
     }
@@ -85,13 +97,14 @@ class StartupScriptsTest {
     }
 
     private fun runWatcher(states: List<String>, launchFailures: Int = 0,
-        ackFailures: Int = 0, missingAck: Boolean = false, gapAt: Int = 0): List<String> {
+        ackFailures: Int = 0, missingAck: Boolean = false, gapAt: Int = 0,
+        selected: String = "diplay", commands: MutableList<String>? = null): List<String> {
         val temp = Files.createTempDirectory("gt6-watcher-test").toFile()
         var process: Process? = null
         try {
             val bin = temp.resolve("bin").apply { mkdirs() }
             val base = temp.resolve("state").apply { mkdirs() }
-            base.resolve("selected").writeText("diplay")
+            base.resolve("selected").writeText(selected)
             temp.resolve("states").writeText(states.joinToString("\n") + "\n")
             temp.resolve("step").writeText("1")
             temp.resolve("launch-count").writeText("0")
@@ -131,6 +144,7 @@ class StartupScriptsTest {
                         step=${'$'}((step+1)); echo "${'$'}step" > step
                         [ "${'$'}step" -le ${states.size} ] || kill -TERM "${'$'}PPID" ;;
                     am)
+                        echo "${'$'}2" >> launch-commands
                         count=${'$'}(cat launch-count); count=${'$'}((count+1)); echo "${'$'}count" > launch-count
                         token=
                         while [ "${'$'}#" -gt 1 ]; do
@@ -161,6 +175,7 @@ class StartupScriptsTest {
                     environment()["PATH"] = bin.absolutePath + ":" + environment()["PATH"]
                 }.start()
             assertTrue("Watcher must finish the synthetic sequence", process.waitFor(10, TimeUnit.SECONDS))
+            commands?.addAll(temp.resolve("launch-commands").takeIf { it.exists() }?.readLines().orEmpty())
             return temp.resolve("launches").takeIf { it.exists() }?.readLines() ?: emptyList()
         } finally { process?.destroyForcibly(); temp.deleteRecursively() }
     }
