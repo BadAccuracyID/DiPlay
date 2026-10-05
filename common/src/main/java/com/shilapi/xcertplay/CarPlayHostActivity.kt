@@ -1119,6 +1119,17 @@ class CarPlayHostActivity : ComponentActivity() {
             ).apply { topMargin = dp(14) },
         )
 
+        if (Gt6NightMode.available()) {
+            content.addView(settingsChoiceRow(
+                label = "CarPlay appearance",
+                options = Gt6NightMode.Mode.entries.map { it to it.label },
+                selected = Gt6NightMode.mode(this),
+            ) { mode ->
+                Gt6NightMode.save(this, mode)
+                syncAirPlayDarkMode()
+            })
+        }
+
         val seekBar = SeekBar(this).apply {
             max = CarPlayDisplayScale.MAX_TENTHS - CarPlayDisplayScale.MIN_TENTHS
             progress = displayScaleTenths - CarPlayDisplayScale.MIN_TENTHS
@@ -3246,6 +3257,10 @@ class CarPlayHostActivity : ComponentActivity() {
     }
 
     private fun syncAirPlayDarkMode() {
+        if (Gt6NightMode.available()) {
+            controller?.setNightMode(Gt6NightMode.current(this))
+            return
+        }
         val session = activeAirPlaySession ?: return
         val night = darkMode
         airPlayCommandExecutor.execute {

@@ -111,6 +111,60 @@ class CarPlayKnobDispatchTest {
         } finally { release.countDown(); controller.close(); old.close(); replacement.close() }
     }
 
+    @Test fun appearanceChangesSendRealEncryptedCommandsAndSuppressDuplicatePolling() {
+        val controller = controller()
+        val (session, wire) = session()
+        try {
+            field(controller, "activeSession", session)
+            assertTrue(controller.setNightMode(true))
+            assertTrue(controller.setNightMode(true))
+            assertTrue(controller.setNightMode(false))
+            drain(controller)
+            val messages = commands(ControlCipher(ByteArray(32), ByteArray(32)).decrypt(wire.toByteArray()).data)
+            assertEquals(listOf("setNightMode", "setNightMode"), messages.map { it["type"] })
+            assertEquals(listOf(true, false), messages.map { (it["params"] as Map<*, *>)["nightMode"] })
+        } finally { controller.close(); session.close() }
+    }
+
+    @Test fun unavailableAppearanceChannelRetriesAndNewSessionReceivesTheSameMode() {
+        val controller = controller()
+        val (old, oldWire) = session()
+        val (replacement, newWire) = session()
+        try {
+            field(controller, "activeSession", old)
+            field(old, "eventCipher", null)
+            controller.setNightMode(true); drain(controller)
+            assertEquals(0, oldWire.size())
+            field(old, "eventCipher", ControlCipher(ByteArray(32), ByteArray(32)))
+            controller.setNightMode(true); drain(controller)
+            assertTrue(oldWire.size() > 0)
+            field(controller, "activeSession", replacement)
+            controller.setNightMode(true); drain(controller)
+            assertTrue(newWire.size() > 0)
+        } finally { controller.close(); old.close(); replacement.close() }
+    }
+
+    @Test fun queuedAppearanceCannotReachAReplacedSession() {
+        val controller = controller()
+        val (old, oldWire) = session()
+        val (replacement, newWire) = session()
+        val release = CountDownLatch(1)
+        try {
+            val busy = CountDownLatch(1)
+            worker(controller).execute { busy.countDown(); release.await(3, TimeUnit.SECONDS) }
+            assertTrue(busy.await(3, TimeUnit.SECONDS))
+            field(controller, "activeSession", old)
+            controller.setNightMode(true)
+            field(controller, "activeSession", replacement)
+            release.countDown(); drain(controller)
+            assertEquals(0, oldWire.size()); assertEquals(0, newWire.size())
+        } finally { release.countDown(); controller.close(); old.close(); replacement.close() }
+    }
+
+    private fun worker(controller: CarPlayController) = CarPlayController::class.java.getDeclaredField("touchExecutor")
+        .apply { isAccessible = true }.get(controller) as ExecutorService
+    private fun drain(controller: CarPlayController) { worker(controller).submit {}.get(3, TimeUnit.SECONDS) }
+
     private fun controller() = CarPlayController(RuntimeEnvironment.getApplication(),
         CarPlayRuntimeConfig(mfiTarget = MfiTarget.LOCAL,
             identification = Iap2IdentificationConfig("test", "test", "test", "test", "1", "1", 0)),

@@ -111,3 +111,21 @@ Offline review of the 3 October WPA2 test found successful iPhone authentication
 Local verification: 22 tests pass across the coordinator, actual generated watcher shell with synthetic Android responses, root process I/O/timeouts, and diagnostic filtering. The APK builds and both generated scripts pass host shell syntax checking. No authentication asset files were found in the candidate APK.
 
 Next in-car sequence: install 0.3.0, choose DiPlay once to install its updated watcher, load/configure the selected-receiver Navi hook, then test boot and ignition wake. Run one controlled ZLink handoff with a return timer and inspect the captured report alongside the native AirPlay endpoint/service state. Preserve the working DiPlay build and the WPA2 hotspot configuration. ZLink CarPlay reconnection remains unresolved.
+
+## Version 0.4: wake recovery, 2026-10-05
+
+The user reported that morning startup failed and required killing/reopening the switcher and choosing DiPlay again. No ADB was available to retrieve the failure log. The last verified installed switcher was 0.2; the 0.3 candidate was built offline. The specific morning failure remains unconfirmed.
+
+Version 0.4 addresses the known gaps:
+
+- Treat ACC off/on and a polling gap of at least 20 seconds in `/proc/uptime` as wake events. This handles a suspend that hides the entire off/on transition from the poller. Failed power, ACC, or focus reads still defer startup.
+- Wait for a request-specific coordinator result. Android accepting `am start` does not disarm startup. DiPlay startup also requires its connection service to appear. This confirms receiver startup, not iPhone connection or rendered CarPlay.
+- Retry failed launches or coordinator operations after 15 seconds. After three failures, wait 60 seconds before another batch. Defer retries while another app or the camera is focused. A pending request expires after four minutes; changing the saved receiver invalidates it.
+- Keep a pending launch across missing Bluetooth readiness and camera focus. Boot readiness no longer expires permanently after four minutes.
+- Queue a new startup intent if the existing activity is working. Finish a failed automatic attempt so the failure screen does not remain over the launcher.
+- Refresh the watcher when opening CarPlay Switch without switching receivers or resetting radios. If the installed script changes, stop only shell interpreters whose second argument is the exact watcher path, then start the replacement detached from the app. The file lock still allows one watcher. Child commands close the watcher's lock descriptor.
+- Include fixed startup events and the latest result in **Save connection report**. Vendor payloads, authentication material, and raw `am` output are excluded.
+
+Install both new candidate APKs when ADB is available. Open CarPlay Switch once after updating it to replace the old watcher; root permission must already be granted or accepted. Verify `watcher-version=4`, a live watcher, and service startup after reboot and ignition wake. Installing an APK alone does not replace an already running root watcher.
+
+The watcher intentionally opens the saved receiver at boot/wake. After successful startup it does not continuously bring CarPlay over other apps. A delayed-phone connection is owned by DiPlay's existing reconnect controller; its reliability needs the phone-absent/later-arrival car test.

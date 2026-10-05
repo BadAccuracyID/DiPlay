@@ -195,6 +195,9 @@ class CarPlayController(
     @Volatile private var mux: Iap2UsbMuxHost? = null
     @Volatile private var csm: Iap2Session? = null
     @Volatile private var activeSession: AirPlaySession? = null
+    // Accessed only on touchExecutor. Re-send on a replaced session or failed event-channel write.
+    private var nightModeSession: AirPlaySession? = null
+    private var sentNightMode: Boolean? = null
     private val clusterUiLock = Any()
     private var clusterUiStream: Pair<AirPlaySession, Int>? = null
     private var clusterUiShown = true
@@ -397,6 +400,26 @@ class CarPlayController(
         } catch (_: Exception) {
             false
         }
+    }
+
+    /** Serializes appearance changes with input; service polling also handles UI destruction/reconnects. */
+    fun setNightMode(night: Boolean): Boolean {
+        if (closed) return false
+        val session = activeSession ?: return false
+        return try {
+            touchExecutor.execute {
+                if (closed || activeSession !== session) return@execute
+                if (nightModeSession === session && sentNightMode == night) return@execute
+                try {
+                    if (session.setNightMode(night)) {
+                        nightModeSession = session
+                        sentNightMode = night
+                        debugLog("GT6 CarPlay appearance=${if (night) "night" else "day"}")
+                    }
+                } catch (_: Exception) { debugLog("CarPlay appearance update will retry") }
+            }
+            true
+        } catch (_: Exception) { false }
     }
 
     /** Queues one knob gesture on the input worker, including when the UI has been recreated. */

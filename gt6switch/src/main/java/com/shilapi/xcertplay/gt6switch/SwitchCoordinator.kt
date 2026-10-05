@@ -35,10 +35,23 @@ internal class SwitchCoordinator(
 
     fun switch(toDiPlay: Boolean) = locked { perform(toDiPlay) }
 
-    fun openSelected() = locked {
+    /** Update/restart startup independently of a radio handoff, including after an APK update. */
+    fun repairStartupWatcher() = locked {
+        checkDevice()
+        val selected = root.run("cat $base/selected 2>/dev/null || true").trim()
+        if (selected !in listOf("diplay", "zlink")) {
+            trace("Choose DiPlay or ZLink to enable automatic startup.")
+        } else {
+            installBootSelection()
+            trace("Startup watcher refreshed. Saved receiver and connection preserved.")
+        }
+    }
+
+    fun openSelected(expectedReceiver: String? = null, verifyStartup: Boolean = false) = locked {
         checkDevice()
         val selected = root.run("cat $base/selected 2>/dev/null || true").trim()
         if (selected !in listOf("diplay", "zlink")) throw IOException("Choose a receiver in CarPlay Switch first")
+        if (expectedReceiver != null && selected != expectedReceiver) throw IOException("Receiver selection changed; startup cancelled")
         val pkg = diPlayPackage()
         if (selected == "diplay" && pkg != null && hasDiPlayService(pkg)) {
             // An active or connecting controller owns its radios. Navi/wake only reopen its screen.
@@ -53,6 +66,21 @@ internal class SwitchCoordinator(
         } else {
             perform(selected == "diplay")
         }
+        if (verifyStartup) {
+            if (selected == "diplay" && pkg != null) {
+                var ready = false
+                repeat(30) {
+                    if (!ready) { ready = hasDiPlayService(pkg); if (!ready) pauseThread(1_000) }
+                }
+                if (!ready) throw IOException("DiPlay connection service did not start")
+            }
+        }
+    }
+
+    fun reportStartup(request: String, success: Boolean) {
+        require(request.matches(Regex("[0-9]+-[0-9]+-[0-9]+")))
+        val result = "$request ${if (success) "success" else "failure"}"
+        root.run("umask 077; printf %s ${quote(result)} > $base/startup-result-$request.tmp; mv $base/startup-result-$request.tmp $base/startup-result")
     }
 
     private fun locked(action: () -> Unit) {
@@ -155,14 +183,22 @@ internal class SwitchCoordinator(
         it.startsWith("ap=13 ") && it.endsWith("config=match")
     }
     private fun hasDiPlayService(pkg: String) = root.run(
-        "dumpsys activity services ${quote(pkg)} | grep ServiceRecord | grep -F com.shilapi.xcertplay.DiPlaySessionService >/dev/null && echo yes || true",
+        "timeout 5 dumpsys activity services ${quote(pkg)} | grep ServiceRecord | grep -F com.shilapi.xcertplay.DiPlaySessionService >/dev/null && echo yes || true",
+        8,
     ).trim() == "yes"
 
     private fun installBootSelection() {
         val script = StartupScripts.watcher()
-        root.run("umask 077; mkdir -p $base; chmod 700 $base; printf %s ${quote(script)} > $base/boot-script.tmp; chmod 700 $base/boot-script.tmp; mv $base/boot-script.tmp /data/adb/service.d/gt6-carplay-switch.sh")
-        // Its lock is inherited only by the watcher, not by the short-lived root request.
-        root.run("(sleep 5; /system/bin/sh /data/adb/service.d/gt6-carplay-switch.sh) </dev/null >> $base/watcher-output.txt 2>&1 &")
+        root.run("umask 077; mkdir -p $base /data/adb/service.d; chmod 700 $base; printf %s ${quote(script)} > $base/boot-script.tmp; chmod 700 $base/boot-script.tmp")
+        val unchanged = root.run("cmp -s $base/boot-script.tmp ${StartupScripts.SCRIPT} && echo same || true").trim() == "same"
+        if (unchanged) {
+            root.run("rm -f $base/boot-script.tmp")
+        } else {
+            root.run("mv $base/boot-script.tmp ${StartupScripts.SCRIPT}")
+            root.run(StartupScripts.stopPreviousWatcher())
+        }
+        // Close the root request's pipes. Legacy watcher children can hold its lock up to five seconds.
+        root.run("nohup /system/bin/sh -c ${quote("sleep 6; exec /system/bin/sh ${StartupScripts.SCRIPT}")} </dev/null >> $base/watcher-output.txt 2>&1 &")
     }
 
     private fun quote(value: String): String = "'" + value.replace("'", "'\\''") + "'"

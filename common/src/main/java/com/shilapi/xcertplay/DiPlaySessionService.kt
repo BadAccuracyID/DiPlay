@@ -15,6 +15,19 @@ import com.shilapi.xcertplay.host.R
 
 /** Keeps an explicitly started connection alive when another car app is in the foreground. */
 class DiPlaySessionService : Service() {
+    private var illumination: Gt6NightMode.Monitor? = null
+    override fun onCreate() {
+        super.onCreate()
+        if (Gt6NightMode.available()) {
+            illumination = Gt6NightMode.Monitor(this) { night ->
+                CarPlayBackgroundSession.snapshot()?.controller?.setNightMode(night)
+            }.also { it.start() }
+        }
+    }
+    override fun onDestroy() {
+        illumination?.stop(); illumination = null
+        super.onDestroy()
+    }
     override fun onBind(intent: Intent?): IBinder? = null
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {

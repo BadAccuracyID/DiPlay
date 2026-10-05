@@ -20,11 +20,11 @@ class StartupScriptsTest {
     }
 
     @Test fun zeroExitAndroidErrorsAreRetriedUntilLaunchSucceeds() {
-        assertEquals(listOf("boot", "boot", "boot"), runWatcher(List(5) { "1 Awake 0" }, launchFailures = 2))
+        assertEquals(listOf("boot", "boot", "boot"), runWatcher(List(15) { "1 Awake 0" }, launchFailures = 2))
     }
 
     @Test fun launchFailureRetriesAreBounded() {
-        assertEquals(3, runWatcher(List(8) { "1 Awake 0" }, launchFailures = 10).size)
+        assertEquals(3, runWatcher(List(16) { "1 Awake 0" }, launchFailures = 10).size)
     }
 
     @Test fun cameraDefersStartupWithoutLosingThePendingLaunch() {
@@ -35,7 +35,25 @@ class StartupScriptsTest {
         assertEquals(listOf("boot"), runWatcher(listOf("1 Awake 2", "1 Awake 2", "1 Awake 0")))
     }
 
-    private fun runWatcher(states: List<String>, launchFailures: Int = 0): List<String> {
+    @Test fun coordinatorFailureAfterAmSuccessIsRetried() {
+        assertEquals(listOf("boot", "boot"), runWatcher(List(10) { "1 Awake 0" }, ackFailures = 1))
+    }
+    @Test fun noCompletionReceiptCannotDisarmStartup() {
+        assertEquals(listOf("boot", "boot"), runWatcher(List(55) { "1 Awake 0" }, missingAck = true))
+    }
+    @Test fun suspendGapTriggersWakeEvenIfAccAndAndroidRemainAwake() {
+        assertEquals(listOf("boot", "wake"), runWatcher(List(6) { "1 Awake 0" }, gapAt = 3))
+    }
+    @Test fun failedStartupRetriesAfterCooldownInsteadOfGivingUpUntilNextIgnition() {
+        assertEquals(4, runWatcher(List(25) { "1 Awake 0" }, launchFailures = 10).size)
+    }
+    @Test fun cameraBlocksRetryAfterCoordinatorFailure() {
+        assertEquals(listOf("boot", "boot"), runWatcher(
+            listOf("1 Awake 0") + List(10) { "1 Awake 1" } + List(6) { "1 Awake 0" }, ackFailures = 1))
+    }
+
+    private fun runWatcher(states: List<String>, launchFailures: Int = 0,
+        ackFailures: Int = 0, missingAck: Boolean = false, gapAt: Int = 0): List<String> {
         val temp = Files.createTempDirectory("gt6-watcher-test").toFile()
         var process: Process? = null
         try {
@@ -52,6 +70,11 @@ class StartupScriptsTest {
                 state=${'$'}(sed -n "${'$'}{step}p" states)
                 set -- "${'$'}name" "${'$'}@"
                 case "${'$'}1" in
+                    cut)
+                        if [ "${'$'}4" = /proc/uptime ]; then
+                            extra=0; [ "$gapAt" -eq 0 ] || [ "${'$'}step" -lt $gapAt ] || extra=60
+                            echo "${'$'}((step*5+extra)) 0"
+                        else shift; exec /usr/bin/cut "${'$'}@"; fi ;;
                     getprop) case "${'$'}2" in sys.boot_completed) echo 1 ;; sys.acc.state) echo "${'$'}state" | cut -d' ' -f1 ;; esac ;;
                     dumpsys)
                         if [ "${'$'}2" = power ]; then
@@ -77,15 +100,25 @@ class StartupScriptsTest {
                         [ "${'$'}step" -le ${states.size} ] || kill -TERM "${'$'}PPID" ;;
                     am)
                         count=${'$'}(cat launch-count); count=${'$'}((count+1)); echo "${'$'}count" > launch-count
+                        token=
                         while [ "${'$'}#" -gt 1 ]; do
-                            [ "${'$'}1" != reason ] || { echo "${'$'}2" >> launches; break; }
+                            [ "${'$'}1" != reason ] || echo "${'$'}2" >> launches
+                            [ "${'$'}1" != startup_request ] || token="${'$'}2"
                             shift
                         done
-                        if [ "${'$'}count" -le $launchFailures ]; then echo 'Error: launch rejected'; else echo 'Starting: Intent'; fi ;;
+                        if [ "${'$'}count" -le $launchFailures ]; then echo 'Error: launch rejected'
+                        else
+                            echo 'Starting: Intent'
+                            if [ "$missingAck" != true ]; then
+                                outcome=success
+                                [ "${'$'}count" -gt $ackFailures ] || outcome=failure
+                                printf '%s %s' "${'$'}token" "${'$'}outcome" > "${base.absolutePath}/startup-result"
+                            fi
+                        fi ;;
                 esac
                 exit 0
             """.trimIndent() + "\n"
-            listOf("getprop", "dumpsys", "settings", "pm", "pidof", "flock", "timeout", "date", "sleep", "am").forEach {
+            listOf("cut", "getprop", "dumpsys", "settings", "pm", "pidof", "flock", "timeout", "date", "sleep", "am").forEach {
                 bin.resolve(it).apply { writeText(stub); setExecutable(true) }
             }
             val watcher = temp.resolve("watcher.sh").apply {

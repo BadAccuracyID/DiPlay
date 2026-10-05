@@ -110,6 +110,38 @@ class SwitchCoordinatorTest {
         assertTrue(root.commands.any { it.contains("hotspotctl.sh repair") })
     }
 
+    @Test fun automaticStartupDoesNotReopenAnOutdatedSelection() {
+        root.selected = "zlink"
+        assertThrows(IOException::class.java) { coordinator.openSelected("diplay", true) }
+        assertFalse(root.commands.any { it.startsWith("am start") || it.contains("force-stop") })
+    }
+
+    @Test fun automaticStartupReportsMissingConnectionService() {
+        assertThrows(IOException::class.java) { coordinator.openSelected("diplay", true) }
+        assertEquals("diplay", root.selected)
+    }
+
+    @Test fun automaticStartupAcceptsAnExistingServiceWithoutRadioReset() {
+        root.service = true
+        coordinator.openSelected("diplay", true)
+        assertTrue(released.isEmpty())
+        assertFalse(root.commands.any { it.contains("force-stop") })
+    }
+
+    @Test fun watcherRefreshPreservesReceiverAndRadios() {
+        root.service = true
+        coordinator.repairStartupWatcher()
+        assertEquals("diplay", root.selected)
+        assertTrue(released.isEmpty())
+        assertFalse(root.commands.any { it.contains("force-stop") || it.contains("ctl.stop") || it.startsWith("am start") })
+        assertTrue(root.commands.any { it.startsWith("nohup ") })
+    }
+
+    @Test fun invalidStartupReceiptCannotWriteAnArbitraryPath() {
+        assertThrows(IllegalArgumentException::class.java) { coordinator.reportStartup("../../bad", true) }
+        assertTrue(root.commands.isEmpty())
+    }
+
     private class FakeRoot : CommandRunner {
         val commands = mutableListOf<String>()
         var selected = "diplay"
@@ -125,7 +157,7 @@ class SwitchCoordinatorTest {
                 command == "id -u" -> return "0"
                 command.startsWith("cat ") -> return selected
                 command.startsWith("test -f ") -> return "yes"
-                command.startsWith("dumpsys activity services") -> return if (service) "yes" else ""
+                command.startsWith("timeout 5 dumpsys activity services") -> return if (service) "yes" else ""
                 command.startsWith("pidof ") -> return if (native) "1234" else ""
                 command.endsWith("RootBridge status") -> return if (ap) "ap=13 wifi=1 config=match" else "ap=11 wifi=3 config=match"
                 command.startsWith("setprop ctl.stop") -> native = false
