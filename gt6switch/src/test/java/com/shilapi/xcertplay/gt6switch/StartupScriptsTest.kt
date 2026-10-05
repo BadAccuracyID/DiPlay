@@ -7,6 +7,38 @@ import org.junit.Test
 
 /** Execute the generated shell against synthetic Android command responses. No ADB or root. */
 class StartupScriptsTest {
+    @Test fun migrationStopsExactWatcherWithAndroidOrMagiskShellOnly() {
+        val temp = Files.createTempDirectory("gt6-migration-test").toFile()
+        try {
+            val proc = temp.resolve("proc").apply { mkdirs() }
+            val script = StartupScripts.SCRIPT
+            val fixtures = listOf(
+                listOf("/system/bin/sh", script),
+                listOf("/debug_ramdisk/.magisk/busybox/busybox", "sh", script),
+                listOf("busybox", "sh", script),
+                listOf("/system/bin/sh", "$script.other"),
+                listOf("/debug_ramdisk/.magisk/busybox/busybox", "cat", script),
+                listOf("/system/bin/sh", "-c", "cat $script"),
+                listOf("unrelated", script),
+            )
+            fixtures.forEachIndexed { index, args ->
+                proc.resolve("${index + 1}/cmdline").apply {
+                    parentFile!!.mkdirs(); writeBytes(args.joinToString("\u0000", postfix = "\u0000").toByteArray())
+                    parentFile!!.resolve("comm").writeText(args.first().substringAfterLast('/') + "\n")
+                }
+            }
+            val migration = temp.resolve("migration.sh").apply {
+                writeText("kill() { printf '%s\\n' \"\u0024*\" >> killed; }\n" +
+                    StartupScripts.stopPreviousWatcher().replace("/proc/", "${proc.absolutePath}/"))
+            }
+            val process = ProcessBuilder("/bin/sh", migration.absolutePath).directory(temp)
+                .redirectErrorStream(true).redirectOutput(temp.resolve("output")).start()
+            assertTrue(process.waitFor(10, TimeUnit.SECONDS))
+            assertEquals(0, process.exitValue())
+            assertEquals(listOf("-TERM 1", "-TERM 2", "-TERM 3"), temp.resolve("killed").readLines())
+        } finally { temp.deleteRecursively() }
+    }
+
     @Test fun normalAwakePollingLaunchesOnlyOnce() {
         assertEquals(listOf("boot"), runWatcher(List(5) { "1 Awake 0" }))
     }

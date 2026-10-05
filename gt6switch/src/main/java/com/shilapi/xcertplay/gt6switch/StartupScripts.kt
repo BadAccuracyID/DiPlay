@@ -120,10 +120,20 @@ internal object StartupScripts {
     fun stopPreviousWatcher(): String = """
         for entry in /proc/[0-9]*/cmdline; do
             [ -r "${'$'}entry" ] || continue
+            # Shell builtins skip hundreds of unrelated processes before spawning any parser.
+            process_dir="${'$'}{entry%/cmdline}"
+            IFS= read -r process_name < "${'$'}process_dir/comm" 2>/dev/null || continue
+            case "${'$'}process_name" in sh|busybox) ;; *) continue ;; esac
             args="${'$'}(tr '\000' '\n' < "${'$'}entry" 2>/dev/null)"
             executable="${'$'}(printf '%s\n' "${'$'}args" | sed -n '1p')"
             script="${'$'}(printf '%s\n' "${'$'}args" | sed -n '2p')"
-            case "${'$'}executable" in /system/bin/sh|sh) ;; *) continue ;; esac
+            case "${'$'}executable" in
+                /system/bin/sh|sh) ;;
+                /debug_ramdisk/.magisk/busybox/busybox|busybox)
+                    [ "${'$'}script" = sh ] || continue
+                    script="${'$'}(printf '%s\n' "${'$'}args" | sed -n '3p')" ;;
+                *) continue ;;
+            esac
             [ "${'$'}script" = "$SCRIPT" ] || continue
             pid="${'$'}{entry#/proc/}"; pid="${'$'}{pid%/cmdline}"
             kill -TERM "${'$'}pid" 2>/dev/null || true
