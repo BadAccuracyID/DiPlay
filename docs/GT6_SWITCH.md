@@ -142,3 +142,7 @@ The user requested background preparation at startup and control through DiPlay'
 - Existing DiPlay `BootReceiver` overrides remain disabled on this GT6 so a separate boot launcher cannot race the selected-receiver watcher. Startup selection remains with CarPlay Switch.
 
 Install the updated DiPlay APK and CarPlay Switch 0.5, then open the switcher once to replace the watcher. Expected `watcher-version=5`. Test a real reboot: launcher stays visible, DiPlay has no new connection service, ZLink native service is stopped, radio preparation has a matching receipt, and the saved Automatic connection value is unchanged. Then test normal app opening with the setting off and on. Existing ignition sleep/wake and physical headlight tests still require the car.
+
+## Version 0.6: faster Navi connection
+
+After a successful background preparation, the switcher saves a receipt tied to the current Android boot and installed DiPlay package. Navi checks that receipt plus the live ZLink supervisor, hotspot, Wi-Fi, and OEM projection peer state. When they still match the prepared state, it starts DiPlay's existing wireless connection helper directly, skipping the repeated app force-stop, peer release, P2P reset, and hotspot stop. An active DiPlay session keeps its existing reopen path. A missing or stale receipt, or changed radio state, uses the checked full handoff. The receipt is cleared before any new handoff, including a switch to ZLink.

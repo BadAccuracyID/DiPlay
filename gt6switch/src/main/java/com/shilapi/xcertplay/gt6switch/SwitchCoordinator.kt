@@ -29,6 +29,7 @@ internal class SwitchCoordinator(
     },
 ) {
     private val base = "/data/adb/gt6-carplay-switch"
+    private val prepared = "$base/diplay-prepared"
     private val pause = "/data/local/tmp/skip_softap_boot"
     private val helper = "/data/adb/hotspot/helper.apk"
     private val bridge = "CLASSPATH=$helper timeout 25 app_process /system/bin com.efran.hotspot.RootBridge"
@@ -78,8 +79,16 @@ internal class SwitchCoordinator(
         } else if (selected == "diplay" && pkg == null) {
             trace("Patched DiPlay is missing; restoring ZLink.")
             perform(false)
+        } else if (selected == "diplay" && pkg != null) {
+            val phone = preparedDiPlayPhone(pkg)
+            if (phone != null) {
+                trace("Using prepared DiPlay radios for Navi connection.")
+                startActivity("am start -n ${quote("$pkg/com.shilapi.xcertplay.Gt6StartWirelessActivity")} --es phone ${quote(phone)}")
+            } else {
+                perform(true)
+            }
         } else {
-            perform(selected == "diplay")
+            perform(false)
         }
         if (verifyStartup) {
             if (selected == "diplay" && pkg != null) {
@@ -125,6 +134,8 @@ internal class SwitchCoordinator(
             throw IOException("The GT6 hotspot helper is missing; no apps were changed")
         }
         if (!prepareOnly) installBootSelection()
+        // A failed or interrupted handoff must not leave a reusable preparation receipt.
+        root.run("rm -f $prepared")
         trace(if (prepareOnly) "Preparing DiPlay radio access in the background…" else "Closing the current CarPlay connection…")
         root.run("if [ ! -e $pause ]; then touch $pause; touch $base/owns-hotspot-pause; fi")
         try {
@@ -143,6 +154,7 @@ internal class SwitchCoordinator(
                 root.run("svc wifi enable")
                 if (!prepareOnly) startActivity("am start -n ${quote(diPlay!! + "/com.shilapi.xcertplay.Gt6StartWirelessActivity")} --es phone ${quote(state.lastPhone)}")
                 root.run("printf %s ${quote(diPlay!!)} > $base/diplay-package; printf diplay > $base/selected")
+                root.run("umask 077; printf '%s %s' \"\$(cat /proc/sys/kernel/random/boot_id)\" ${quote(diPlay)} > $prepared.tmp; mv $prepared.tmp $prepared")
                 trace(if (prepareOnly) "DiPlay ready. Open DiPlay to use its Automatic connection setting."
                     else "DiPlay selected. Accept CarPlay on your iPhone if asked.")
             } else {
@@ -196,6 +208,15 @@ internal class SwitchCoordinator(
     }
 
     private fun nativeLinkReady() = root.run("pidof 'z-'link || true").trim().isNotEmpty()
+    /** Reuse only a successful preparation from this boot while its live radio state still matches. */
+    private fun preparedDiPlayPhone(pkg: String): String? {
+        val bootId = root.run("cat /proc/sys/kernel/random/boot_id").trim()
+        if (bootId.isEmpty() || root.run("cat $prepared 2>/dev/null || true").trim() != "$bootId $pkg") return null
+        if (root.run("getprop init.svc.zlink5").trim() != "stopped" || nativeLinkReady()) return null
+        if (!root.run("$bridge status").trim().startsWith("ap=11 wifi=3 ")) return null
+        val state = inspect()
+        return state.lastPhone.takeIf { state.profileMask == 0 && state.peer == null && it.matches(Regex("[0-9A-F]{12}")) }
+    }
     private fun hotspotReady(): Boolean = root.run("$bridge status").trim().let {
         it.startsWith("ap=13 ") && it.endsWith("config=match")
     }
