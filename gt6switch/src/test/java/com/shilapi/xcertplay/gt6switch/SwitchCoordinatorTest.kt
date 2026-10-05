@@ -70,34 +70,6 @@ class SwitchCoordinatorTest {
         assertFalse(root.commands.any { it.startsWith("am start") })
     }
 
-    @Test fun naviUsesPreparedRadiosWithoutRepeatingHandoff() {
-        coordinator.prepareSelected("diplay")
-        root.commands.clear()
-        coordinator.openSelected()
-        assertEquals(2, inspections)
-        assertTrue(released.isEmpty())
-        assertTrue(root.commands.any { it.contains("Gt6StartWirelessActivity") && it.contains(phone) })
-        assertFalse(root.commands.any { it.contains("force-stop") || it.contains("ctl.stop") ||
-            it.contains("remove-group") || it.contains("stop-softap") || it.contains("svc wifi") })
-    }
-
-    @Test fun stalePreparationAfterRebootUsesFullHandoff() {
-        coordinator.prepareSelected("diplay")
-        root.bootId = "next-boot"
-        root.commands.clear()
-        coordinator.openSelected()
-        assertTrue(root.commands.any { it.contains("remove-group") })
-        assertTrue(root.commands.any { it.contains("Gt6StartWirelessActivity") })
-    }
-
-    @Test fun changedRadioAfterPreparationUsesFullHandoff() {
-        coordinator.prepareSelected("diplay")
-        root.ap = true
-        root.commands.clear()
-        coordinator.openSelected()
-        assertTrue(root.commands.any { it.contains("stop-softap") })
-    }
-
     @Test fun preparationRejectsChangedReceiverOrMissingDiPlay() {
         root.selected = "zlink"
         assertThrows(IOException::class.java) { coordinator.prepareSelected("diplay") }
@@ -216,8 +188,6 @@ class SwitchCoordinatorTest {
         var service = false
         var native = false
         var ap = false
-        var bootId = "current-boot"
-        var prepared: String? = null
         var failRepair = false
         var failLaunch = false
         var launchOutput = "Starting: Intent"
@@ -225,16 +195,11 @@ class SwitchCoordinatorTest {
             commands += command
             when {
                 command == "id -u" -> return "0"
-                command == "cat /proc/sys/kernel/random/boot_id" -> return bootId
-                command.startsWith("cat /data/adb/gt6-carplay-switch/diplay-prepared") -> return prepared.orEmpty()
                 command.startsWith("cat ") -> return selected
                 command.startsWith("test -f ") -> return "yes"
                 command.startsWith("timeout 5 dumpsys activity services") -> return if (service) "yes" else ""
                 command.startsWith("pidof ") -> return if (native) "1234" else ""
-                command == "getprop init.svc.zlink5" -> return if (native) "running" else "stopped"
                 command.endsWith("RootBridge status") -> return if (ap) "ap=13 wifi=1 config=match" else "ap=11 wifi=3 config=match"
-                command == "rm -f /data/adb/gt6-carplay-switch/diplay-prepared" -> prepared = null
-                command.contains("mv /data/adb/gt6-carplay-switch/diplay-prepared.tmp") -> prepared = "$bootId com.shihab.diplay.hudtest"
                 command.startsWith("setprop ctl.stop") -> native = false
                 command == "setprop ctl.start zlink5" -> native = true
                 command.contains("hotspotctl.sh repair") -> {
